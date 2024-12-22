@@ -1,19 +1,19 @@
-import pickle
-import optuna
 import numpy as np
-from functools import partial
-from sklearn.ensemble import RandomForestRegressor
+import optuna
+from xgboost import XGBRegressor
 from sklearn.model_selection import cross_val_score
+from optuna.samplers import TPESampler
+from optuna.pruners import MedianPruner
+import pickle
 
 def objective(trial, features, results):
     n_estimators = trial.suggest_int("n_estimators", 50, 500)
     max_depth = trial.suggest_int("max_depth", 5, 50)
-    max_features = trial.suggest_categorical("max_features", ["auto", "sqrt", "log2"])
-
-    model = RandomForestRegressor(
+    
+    model = XGBRegressor(
         n_estimators=n_estimators,
         max_depth=max_depth,
-        max_features=max_features,
+        tree_method="gpu_hist",  # Enable GPU acceleration
         random_state=42,
     )
 
@@ -24,26 +24,36 @@ def train_model():
     features = np.load("features.npy")
     results = np.load("results.npy")
     
-    study = optuna.create_study(direction="minimize")
-    study.optimize(lambda trial: objective(trial, features, results), n_trials=50, show_progress_bar=True)
+    study = optuna.create_study(
+        direction="minimize",
+        sampler=TPESampler(), 
+        pruner=MedianPruner()
+    )
+    study.optimize(
+        lambda trial: objective(trial, features, results), 
+        n_trials=50,
+        show_progress_bar=True
+    )
 
     print("Best Parameters:", study.best_params)
 
     best_params = study.best_params
-    model = RandomForestRegressor(
+    model = XGBRegressor(
         n_estimators=best_params["n_estimators"],
         max_depth=best_params["max_depth"],
-        max_features=best_params["max_features"],
+        learning_rate=best_params["learning_rate"],
+        tree_method="gpu_hist",
         random_state=42,
     )
     model.fit(features, results)
 
-    with open("random_forest_model.pkl", "wb") as file:
+    with open("xgboost_model.pkl", "wb") as file:
         pickle.dump(model, file)
+
 
 def test_model():
     with open("random_forest_model.pkl", "rb") as file:
-        model: RandomForestRegressor = pickle.load(file)
+        model: XGBRegressor = pickle.load(file)
 
     test_f = np.load("test_f.npy")
     predictions = model.predict(test_f)
