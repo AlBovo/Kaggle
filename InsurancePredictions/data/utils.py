@@ -10,7 +10,6 @@ def load_csv(file_path):
 def parse_row(row: list[str]) -> list:
     # TODO: understand what value to put if missing data
     return [
-        int(row[0]),  # id
         int(float(row[1])) if row[1] != '' else 40,  # age
         row[2] == 'Female', # gender
         int(float(row[3])) if row[3] != '' else 32*pow(10, 3),  # annual income

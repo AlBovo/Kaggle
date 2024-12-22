@@ -9,16 +9,14 @@ def generate_data(file_path):
           NpyAppendArray("results.npy", delete_if_exists=True) as results):
         for row in tqdm(data, desc="Generating data"):
             casted = parse_row(row)
-            features.append(np.array([casted[:-1]]))
+            features.append(np.array([casted]))
             results.append(np.array([float(row[-1])]))
     print("Data generated successfully.")
 
 def generate_test(file_path):
     header, data = load_csv(file_path)
-    with (NpyAppendArray("test_f.npy", delete_if_exists=True) as test_f,
-		NpyAppendArray("test_r.npy", delete_if_exists=True) as test_t):
+    with NpyAppendArray("test_f.npy", delete_if_exists=True) as test_f:
         for row in tqdm(data, desc="Generating test data"):
             casted = parse_row(row)
-            test_f.append(np.array([casted[:-1]]))
-            test_t.append(np.array([float(row[-1])]))
+            test_f.append(np.array([casted]))
     print("Test data generated successfully.")
