@@ -13,10 +13,16 @@ def train_model():
     model = XGBRegressor(
         n_estimators=189,
         max_depth=32,
+        learning_rate=1.0,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        num_parallel_tree=100,
+        booster="gbtree",
         tree_method="hist",
         device="gpu",
-        random_state=42,
+        random_state=42
     )
+
     model.fit(features, results)
 
     with open("xgboost_model.pkl", "wb") as file:
