@@ -1,13 +1,11 @@
 import pickle
-import numpy as np
 import optuna
+import numpy as np
+from functools import partial
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import cross_val_score
 
-def objective(trial):
-    features = np.load("features.npy")
-    results = np.load("results.npy")
-
+def objective(trial, features, results):
     n_estimators = trial.suggest_int("n_estimators", 50, 500)
     max_depth = trial.suggest_int("max_depth", 5, 50)
     max_features = trial.suggest_categorical("max_features", ["auto", "sqrt", "log2"])
@@ -23,13 +21,14 @@ def objective(trial):
     return -score.mean()
 
 def train_model():
+    features = np.load("features.npy")
+    results = np.load("results.npy")
+    
     study = optuna.create_study(direction="minimize")
-    study.optimize(objective, n_trials=50)
+    study.optimize(lambda trial: objective(trial, features, results), n_trials=50, show_progress_bar=True)
 
     print("Best Parameters:", study.best_params)
 
-    features = np.load("features.npy")
-    results = np.load("results.npy")
     best_params = study.best_params
     model = RandomForestRegressor(
         n_estimators=best_params["n_estimators"],
