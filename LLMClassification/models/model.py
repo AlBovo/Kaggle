@@ -12,8 +12,8 @@ from sklearn.metrics.pairwise import cosine_similarity
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
 def extract_features(df):
-    if os.path.exists("features.npy"):
-        return np.load("features.npy")
+    #if os.path.exists("features.npy"):
+        #return np.load("features.npy")
     prompts = df["prompt"].tolist()
     responses_a = df["response_a"].tolist()
     responses_b = df["response_b"].tolist()
@@ -78,10 +78,13 @@ def test_model():
     clf : XGBClassifier = pickle.load(open("model.pkl", "rb"))
     label_encoder : LabelEncoder = pickle.load(open("label_encoder.pkl", "rb"))
     X_test = extract_features(load_csv(train=False))
-    test_predictions = clf.predict(X_test)
-    test["winner_model"] = label_encoder.inverse_transform(test_predictions)
+    test_predictions = clf.predict_proba(X_test)
 
-    submission = test[["id", "winner_model"]]
-    submission.columns = ["id", "winner_model_[a/b/tie]"]
+    test["winner_model_a"] = test_predictions[:, 0]
+    test["winner_model_b"] = test_predictions[:, 1]
+    test["winner_tie"] = test_predictions[:, 2]
+        
+    submission = test[["id", "winner_model_a", "winner_model_b", "winner_tie"]]
+    submission.columns = ["id", "winner_model_a", "winner_model_b", "winner_tie"]
     submission.to_csv("submission.csv", index=False)
 
