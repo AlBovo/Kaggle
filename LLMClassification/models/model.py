@@ -44,7 +44,7 @@ def train_model():
     train = load_csv()
     X = extract_features(train)
     label_encoder = LabelEncoder()
-    y = label_encoder.fit_transform(train[["winner_model_a", "winner_model_b", "winner_model_tie"]].idxmax(axis=1))
+    y = label_encoder.fit_transform(train[["winner_model_a", "winner_model_b", "winner_tie"]].idxmax(axis=1))
 
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
 
