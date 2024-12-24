@@ -8,10 +8,14 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import log_loss, classification_report
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics.pairwise import cosine_similarity
+import lightgbm
 
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
-def extract_features(df):
+def extract_features(df, train=False):
+    if(train and os.path.exists('features.npy')):
+        return np.load('features.npy')
+
     prompts = df["prompt"].tolist()
     responses_a = df["response_a"].tolist()
     responses_b = df["response_b"].tolist()
@@ -34,12 +38,12 @@ def extract_features(df):
     similarity_a_b = np.diag(cosine_similarity(response_a_embeddings, response_b_embeddings))
 
     features = np.column_stack([similarity_a, similarity_b, similarity_a_b])
-    np.save("features.npy", features)
+    if(train): np.save("features.npy", features)
     return features
 
 def train_model():
     train = load_csv()
-    X = extract_features(train)
+    X = extract_features(train, True)
     label_encoder = LabelEncoder()
     y = label_encoder.fit_transform(train[["winner_model_a", "winner_model_b", "winner_tie"]].idxmax(axis=1))
 
@@ -52,7 +56,15 @@ def train_model():
         boosting_type="gbdt",
         random_state=42
     )
-    clf.fit(X_train, y_train, eval_set=[(X_val, y_val)], eval_metric="multi_logloss", early_stopping_rounds=50, verbose=10)
+    clf.fit(
+        X_train, y_train,
+        eval_set=[(X_val, y_val)],
+        eval_metric="multi_logloss",
+        callbacks=[
+            lightgbm.early_stopping(stopping_rounds=50),
+            lightgbm.log_evaluation(period=10)  # Log ogni 10 iterazioni
+        ]
+    )
 
     with open("model.pkl", "wb") as f:
         pickle.dump(clf, f)
