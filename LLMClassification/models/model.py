@@ -2,50 +2,78 @@ import pickle, os
 import numpy as np
 from tqdm import tqdm
 from data.generate import load_csv
-from lightgbm import LGBMClassifier
+from textblob import TextBlob
 from sentence_transformers import SentenceTransformer
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import log_loss, classification_report
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics.pairwise import cosine_similarity
-import lightgbm
+from lightgbm import LGBMClassifier, early_stopping, log_evaluation
+from torch.utils.data import DataLoader
 
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
+class EmbeddingDataset:
+    def __init__(self, texts):
+        self.texts = texts
+
+    def __len__(self):
+        return len(self.texts)
+
+    def __getitem__(self, idx):
+        return self.texts[idx]
+
+def batch_encode_texts(texts, model, batch_size=32):
+    dataset = EmbeddingDataset(texts)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+    embeddings = []
+
+    for batch in tqdm(dataloader, desc="Batch Encoding", unit="batch"):
+        batch_embeddings = model.encode(batch, convert_to_tensor=True)
+        embeddings.append(batch_embeddings.cpu().numpy())
+
+    return np.vstack(embeddings)
+
 def extract_features(df, train=False):
-    if(train and os.path.exists('features.npy')):
+    if train and os.path.exists('features.npy'):
         return np.load('features.npy')
 
     prompts = df["prompt"].tolist()
     responses_a = df["response_a"].tolist()
     responses_b = df["response_b"].tolist()
 
-    prompt_embeddings = []
-    response_a_embeddings = []
-    response_b_embeddings = []
+    # Batch embedding extraction
+    prompt_embeddings = batch_encode_texts(prompts, model)
+    response_a_embeddings = batch_encode_texts(responses_a, model)
+    response_b_embeddings = batch_encode_texts(responses_b, model)
 
-    for i in tqdm(range(len(prompts)), desc="Processing features", unit="rows"):
-        prompt_embeddings.append(model.encode(prompts[i]))
-        response_a_embeddings.append(model.encode(responses_a[i]))
-        response_b_embeddings.append(model.encode(responses_b[i]))
+    # Sentiment analysis and verbosity
+    sentiment_a = [TextBlob(text).sentiment.polarity for text in responses_a]
+    sentiment_b = [TextBlob(text).sentiment.polarity for text in responses_b]
+    verbosity_a = [len(text.split()) for text in responses_a]
+    verbosity_b = [len(text.split()) for text in responses_b]
 
-    prompt_embeddings = np.array(prompt_embeddings)
-    response_a_embeddings = np.array(response_a_embeddings)
-    response_b_embeddings = np.array(response_b_embeddings)
-
+    # Compute cosine similarities
     similarity_a = np.diag(cosine_similarity(prompt_embeddings, response_a_embeddings))
     similarity_b = np.diag(cosine_similarity(prompt_embeddings, response_b_embeddings))
     similarity_a_b = np.diag(cosine_similarity(response_a_embeddings, response_b_embeddings))
 
-    features = np.column_stack([similarity_a, similarity_b, similarity_a_b])
-    if(train): np.save("features.npy", features)
+    # Stack features
+    features = np.column_stack([
+        similarity_a, similarity_b, similarity_a_b,
+        sentiment_a, sentiment_b,
+        verbosity_a, verbosity_b
+    ])
+    if train:
+        np.save("features.npy", features)
+
     return features
 
 def train_model():
     train = load_csv()
     X = extract_features(train, True)
     label_encoder = LabelEncoder()
-    y = label_encoder.fit_transform(train[["winner_model_a", "winner_model_b", "winner_tie"]].idxmax(axis=1))
+    y = label_encoder.fit_transform(train["winner_model"].values)
 
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
 
@@ -61,8 +89,8 @@ def train_model():
         eval_set=[(X_val, y_val)],
         eval_metric="multi_logloss",
         callbacks=[
-            lightgbm.early_stopping(stopping_rounds=50),
-            lightgbm.log_evaluation(period=10)  # Log ogni 10 iterazioni
+            early_stopping(stopping_rounds=50),
+            log_evaluation(period=10)
         ]
     )
 
